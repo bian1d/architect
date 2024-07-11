@@ -60,7 +60,7 @@ class RandomElecDataset(Dataset):
         self.dataset = self.generate_dataset()
         # import pdb; pdb.set_trace()
         if self.dataset is not None:
-            self.num_data = len(self.dataset.y)
+            self.num_data = len(self.dataset)
         self.seed = seed
         if train_idx is None and train_set is None:
             train_valid_idx, test_idx = train_test_split(
@@ -107,28 +107,30 @@ class RandomElecDataset(Dataset):
             energy_tensor = torch.tensor([potential_energy], dtype=torch.float)
             
             data_list.append(Data(x=charges_tensor, pos=positions_tensor, y=energy_tensor))
-        
+            # import pdb; pdb.set_trace()
         # Concatenate all the tensors along the batch dimension
         
         
         return data_list
-
+    
+    def len(self):
+        return len(self.dataset)
         
-    def index_select(self, idx):
-        dataset = copy.copy(self)
-        dataset.dataset = self.dataset.index_select(idx)
-        if isinstance(idx, torch.Tensor):
-            dataset.num_data = idx.size(0)
-        else:
-            dataset.num_data = idx.shape[0]
-        dataset.__indices__ = idx
-        dataset.train_data = None
-        dataset.valid_data = None
-        dataset.test_data = None
-        dataset.train_idx = None
-        dataset.valid_idx = None
-        dataset.test_idx = None
-        return dataset
+    # def index_select(self, idx):
+    #     dataset = copy.copy(self)
+    #     dataset.dataset = self.dataset.index_select(idx)
+    #     if isinstance(idx, torch.Tensor):
+    #         dataset.num_data = idx.size(0)
+    #     else:
+    #         dataset.num_data = idx.shape[0]
+    #     dataset.__indices__ = idx
+    #     dataset.train_data = None
+    #     dataset.valid_data = None
+    #     dataset.test_data = None
+    #     dataset.train_idx = None
+    #     dataset.valid_idx = None
+    #     dataset.test_idx = None
+    #     return dataset
 
     def create_subset(self, subset):
         dataset = copy.copy(self)
@@ -183,7 +185,7 @@ def create_customized_dataset():
     n_electrons = 10  # 假设为10个电子
     batch_size = 64 # 你得骗
     dataset = RandomElecDataset(n_electrons, batch_size)
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     num_graphs = len(dataset)
 
     # train_idx = np.arange(num_graphs)
