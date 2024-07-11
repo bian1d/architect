@@ -96,9 +96,6 @@ class RandomElecDataset(Dataset):
         self.__indices__ = None
 
     def generate_dataset(self):
-        all_charges = []
-        all_positions = []
-        all_energies = []
         data_list = []
         
         for _ in range(self.batch_size):
@@ -114,7 +111,7 @@ class RandomElecDataset(Dataset):
         # Concatenate all the tensors along the batch dimension
         
         
-        return Dataset(data_list)
+        return data_list
 
         
     def index_select(self, idx):
