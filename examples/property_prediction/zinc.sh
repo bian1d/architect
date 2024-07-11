@@ -1,10 +1,14 @@
-# Copyright (c) Microsoft Corporation.
-# Licensed under the MIT License.
 #!/usr/bin/env bash
+
+module load anaconda/2022.10
+module load cuda/11.8
+source activate ms
+
+export PYTHONUNBUFFERED=1
 
 CUDA_VISIBLE_DEVICES=0 fairseq-train \
 --user-dir ../../graphormer \
---num-workers 16 \
+--num-workers 2 \
 --ddp-backend=legacy_ddp \
 --dataset-name zinc \
 --dataset-source pyg \
