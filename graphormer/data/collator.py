@@ -3,7 +3,7 @@
 
 import torch
 
-
+# 对一维向量进行尾部补0，then拓展第0维。（可能是加batchsize）
 def pad_1d_unsqueeze(x, padlen):
     x = x + 1  # pad id = 0
     xlen = x.size(0)
@@ -23,7 +23,17 @@ def pad_2d_unsqueeze(x, padlen):
         x = new_x
     return x.unsqueeze(0)
 
-
+'''
+    很关键的, attn_bias填充(虚节点)，直接变成：
+    x x x -inf -inf
+    x x x -inf -inf
+    x x x -inf -inf
+    0 0 0 -inf -inf
+    0 0 0 -inf -inf
+    意思就是说虚节点只与自己有注意力，而且不享受真实节点之间信息的；
+    同时真实节点注意力bias不受影响。其实我不懂为什么要设置虚节点之间attn=0；
+    然后unsqueeze了一下，把batch搞回来了
+'''
 def pad_attn_bias_unsqueeze(x, padlen):
     xlen = x.size(0)
     if xlen < padlen:
@@ -33,7 +43,9 @@ def pad_attn_bias_unsqueeze(x, padlen):
         x = new_x
     return x.unsqueeze(0)
 
+'''
 
+'''
 def pad_edge_type_unsqueeze(x, padlen):
     xlen = x.size(0)
     if xlen < padlen:

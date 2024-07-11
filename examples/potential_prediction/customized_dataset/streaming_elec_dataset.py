@@ -5,6 +5,7 @@ import torch
 from torch_geometric.data import Data, InMemoryDataset, Dataset, DataLoader
 from graphormer.data.wrapper import preprocess_item
 import copy
+import itertools
 ### Physical world data generater ###
 def generate_electrons_iter_1(n_electrons):
     positions = np.random.uniform(-5, 5, (n_electrons, 3)) # 均匀分布
@@ -32,9 +33,10 @@ def calculate_forces_and_potential_iter_1(positions, charges):
 
     return forces, potential_energy
 
-class RandomElecDataset(Dataset):
+class RandomElecDataset(InMemoryDataset):
     def __init__(
         self,
+        root,
         n_electrons,
         batch_size,
         max_length=None,
@@ -45,24 +47,17 @@ class RandomElecDataset(Dataset):
         train_set=None,
         valid_set=None,
         test_set=None,
+        transform=None,
+        pre_transform=None,
     ):
         self.n_electrons = n_electrons
         self.max_length = max_length
         self.batch_size = batch_size
-        ### modify ###
-        # positions, charges = generate_electrons_iter_1(self.n_electrons)
-        # _, potential_energy = calculate_forces_and_potential_iter_1(positions, charges)
-        # # 将数据转换为Tensor
-        # charges_tensor = torch.tensor(charges, dtype=torch.long).unsqueeze(-1)
-        # positions_tensor = torch.tensor(positions, dtype=torch.float)
-        # energy_tensor = torch.tensor([potential_energy], dtype=torch.float)
-        # self.dataset = Data(x=charges_tensor, pos=positions_tensor, y=energy_tensor)
-        self.dataset = self.generate_dataset()
-        # import pdb; pdb.set_trace()
-        if self.dataset is not None:
-            self.num_data = len(self.dataset)
         self.seed = seed
+        super().__init__(root, transform, pre_transform)
+        self.process()
         if train_idx is None and train_set is None:
+            
             train_valid_idx, test_idx = train_test_split(
                 np.arange(self.num_data),
                 test_size=self.num_data // 10,
@@ -97,7 +92,6 @@ class RandomElecDataset(Dataset):
 
     def generate_dataset(self):
         data_list = []
-        
         for _ in range(self.batch_size):
             positions, charges = generate_electrons_iter_1(self.n_electrons)
             _, potential_energy = calculate_forces_and_potential_iter_1(positions, charges)
@@ -105,98 +99,78 @@ class RandomElecDataset(Dataset):
             charges_tensor = torch.tensor(charges, dtype=torch.long).unsqueeze(-1)
             positions_tensor = torch.tensor(positions, dtype=torch.float)
             energy_tensor = torch.tensor([potential_energy], dtype=torch.float)
-            
-            data_list.append(Data(x=charges_tensor, pos=positions_tensor, y=energy_tensor))
-            # import pdb; pdb.set_trace()
-        # Concatenate all the tensors along the batch dimension
-        
-        
+            edge_index = list(itertools.permutations(range(self.n_electrons), 2))
+            edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+            edge_attr = torch.ones(edge_index.size(1), 1, dtype=torch.long)
+            data = Data(x=charges_tensor, pos=positions_tensor, 
+                        edge_index=edge_index, edge_attr=edge_attr, y=energy_tensor)
+            data_list.append(data)
         return data_list
-    
+
+    def process(self):
+        data_list = self.generate_dataset()
+        self.data_list = data_list
+        data, slices = self.collate(data_list)
+        torch.save((data, slices), self.processed_paths[0])
+        self.data, self.slices = data, slices
+        self.num_data = len(data_list)
+
     def len(self):
-        return len(self.dataset)
-        
-    # def index_select(self, idx):
-    #     dataset = copy.copy(self)
-    #     dataset.dataset = self.dataset.index_select(idx)
-    #     if isinstance(idx, torch.Tensor):
-    #         dataset.num_data = idx.size(0)
-    #     else:
-    #         dataset.num_data = idx.shape[0]
-    #     dataset.__indices__ = idx
-    #     dataset.train_data = None
-    #     dataset.valid_data = None
-    #     dataset.test_data = None
-    #     dataset.train_idx = None
-    #     dataset.valid_idx = None
-    #     dataset.test_idx = None
-    #     return dataset
+        return self.num_data
 
-    def create_subset(self, subset):
-        dataset = copy.copy(self)
-        dataset.dataset = subset
-        dataset.num_data = len(subset)
-        dataset.__indices__ = None
-        dataset.train_data = None
-        dataset.valid_data = None
-        dataset.test_data = None
-        dataset.train_idx = None
-        dataset.valid_idx = None
-        dataset.test_idx = None
-        return dataset
+    def get(self, idx):
+        data = self.data.__class__()
+        if hasattr(self.data, '__num_nodes__'):
+            data.__num_nodes__ = self.data.__num_nodes__[self.slices['x'][idx]:self.slices['x'][idx + 1]]
+        for key in self.data.keys:
+            item = self.data[key][self.slices[key][idx]:self.slices[key][idx + 1]]
+            if torch.is_tensor(item):
+                item = item.clone()
+            data[key] = item
+        return data
 
+    
     def __getitem__(self, idx):
         if isinstance(idx, int):
-            item = self.dataset[idx]
+            item = self.data_list[idx]
             item.idx = idx
             item.y = item.y.reshape(-1)
             return preprocess_item(item)
         else:
             raise TypeError("index to a GraphormerPYGDataset can only be an integer.")
 
-    def __len__(self):
-        return self.num_data
-    # def __init__(self, n_electrons, max_length=None):
-    #     self.n_electrons = n_electrons
-    #     self.max_length = max_length
 
-    # def __len__(self):
-    #     if self.max_length is not None:
-    #         return self.max_length
-    #     return 64
-    
-    # def __getitem__(self, index):
-    #     positions, charges = generate_electrons_iter_1(self.n_electrons)
-    #     _, potential_energy = calculate_forces_and_potential_iter_1(positions, charges)
-    #     # 将数据转换为Tensor
-    #     charges_tensor = torch.tensor(charges, dtype=torch.long).unsqueeze(-1)
-    #     positions_tensor = torch.tensor(positions, dtype=torch.float)
-    #     energy_tensor = torch.tensor([potential_energy], dtype=torch.float)
+    @property
+    def raw_file_names(self):
+        return []
 
-    #     return Data(x=charges_tensor, pos=positions_tensor, y=energy_tensor)
+    @property
+    def processed_file_names(self):
+        return ['data.pt']
 
+    def download(self):
+        pass
 
-
-
-    
 
 @register_dataset("streaming_elec_dataset")
 def create_customized_dataset():
     n_electrons = 10  # 假设为10个电子
     batch_size = 64 # 你得骗
-    dataset = RandomElecDataset(n_electrons, batch_size)
+    
+    dataset = RandomElecDataset(
+    root='/tmp/RandomElecDataset',
+    n_electrons=n_electrons,
+    batch_size=batch_size
+)
     # import pdb; pdb.set_trace()
     num_graphs = len(dataset)
 
-    # train_idx = np.arange(num_graphs)
-    # valid_idx = []  # 空列表
-    # test_idx = []  # 空列表
-    train_valid_idx, test_idx = train_test_split(
-        np.arange(num_graphs), test_size=num_graphs // 10, random_state=0
-    )
-    train_idx, valid_idx = train_test_split(
-        train_valid_idx, test_size=num_graphs // 5, random_state=0
-    )
+    train_idx = np.arange(num_graphs)
+    valid_idx = np.array([], dtype=np.long)  # 空列表
+    test_idx = np.array([], dtype=np.long)  # 空列表
+
+    
+
 
     return {
         "dataset": dataset,
