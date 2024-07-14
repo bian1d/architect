@@ -3,7 +3,10 @@
 
 import torch
 
-# 对一维向量进行尾部补0，then拓展第0维。（可能是加batchsize）
+'''
+    对一个图的in_degree(还是整数)进行全体+1(连接上了虚节点)
+    进行尾部补0,then拓展第0维。(可能是加batchsize)
+'''
 def pad_1d_unsqueeze(x, padlen):
     x = x + 1  # pad id = 0
     xlen = x.size(0)
@@ -25,12 +28,11 @@ def pad_2d_unsqueeze(x, padlen):
 
 '''
     很关键的, attn_bias填充(虚节点)，直接变成：
-    x x x -inf -inf
-    x x x -inf -inf
-    x x x -inf -inf
-    0 0 0 -inf -inf
-    0 0 0 -inf -inf
-    意思就是说虚节点只与自己有注意力，而且不享受真实节点之间信息的；
+    x x x -inf
+    x x x -inf
+    x x x -inf
+    0 0 0 -inf
+    意思就是说虚节点只享受真实节点之间信息的；
     同时真实节点注意力bias不受影响。其实我不懂为什么要设置虚节点之间attn=0；
     然后unsqueeze了一下，把batch搞回来了
 '''
@@ -54,7 +56,17 @@ def pad_edge_type_unsqueeze(x, padlen):
         x = new_x
     return x.unsqueeze(0)
 
-
+'''
+先spatial坐标索引+1，而后直接填充剩下的为0
+这里面是严格二维（同一个batch）
+[[0, 1, 2],      
+ [3, 4, 5],
+ [6, 7, 8]] =>
+               [[1, 2, 3, 0],
+                [4, 5, 6, 0],
+                [7, 8, 9, 0],
+                [0, 0, 0, 0]]
+'''
 def pad_spatial_pos_unsqueeze(x, padlen):
     x = x + 1
     xlen = x.size(0)
@@ -105,7 +117,8 @@ def collator(items, max_node=512, multi_hop_max_dist=20, spatial_pos_max=20):
 
     for idx, _ in enumerate(attn_biases):
         attn_biases[idx][1:, 1:][spatial_poses[idx] >= spatial_pos_max] = float("-inf")
-    max_node_num = max(i.size(0) for i in xs)
+    # 照这么说，每个batch的padding后图节点个数实际上不一样
+    max_node_num = max(i.size(0) for i in xs) # 所有图里面最大的node_num
     max_dist = max(i.size(-2) for i in edge_inputs)
     y = torch.cat(ys)
     x = torch.cat([pad_2d_unsqueeze(i, max_node_num) for i in xs])

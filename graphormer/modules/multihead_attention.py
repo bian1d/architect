@@ -179,6 +179,7 @@ class MultiheadAttention(nn.Module):
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
 
         if attn_bias is not None:
+            # 这里的attn_bias都是经过GraphAttnBias处理过的，每个head不一样的，直接加
             attn_weights += attn_bias.view(bsz * self.num_heads, tgt_len, src_len)
 
         if attn_mask is not None:

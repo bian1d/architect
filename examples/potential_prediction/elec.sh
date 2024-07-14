@@ -9,7 +9,7 @@ export PYTHONUNBUFFERED=1
 CUDA_VISIBLE_DEVICES=0,1 fairseq-train --user-dir ../../graphormer  \
    --user-data-dir customized_dataset \
    --dataset-name streaming_elec_dataset \
-   --best-checkpoint-metric loss \
+   --best-checkpoint-metric l1_loss \
    --num-workers 0 --ddp-backend=c10d \
    --task graph_prediction --criterion l1_loss --num-classes 1 --arch graphormer3d_base \
    --optimizer adam --adam-betas '(0.9, 0.98)' --adam-eps 1e-6 --clip-norm 5.0 \

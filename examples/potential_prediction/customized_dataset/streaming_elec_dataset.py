@@ -118,6 +118,9 @@ class RandomElecDataset(InMemoryDataset):
     def len(self):
         return self.num_data
 
+    def __len__(self) -> np.int:
+        return self.num_data
+
     def get(self, idx):
         data = self.data.__class__()
         if hasattr(self.data, '__num_nodes__'):

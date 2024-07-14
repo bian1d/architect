@@ -215,6 +215,8 @@ class GraphPredictionTask(FairseqTask):
                 dataset, num_samples=len(dataset), seed=self.cfg.seed
             )
 
+        import pdb; pdb.set_trace()
+
         logger.info("Loaded {0} with #samples: {1}".format(split, len(dataset)))
 
         self.datasets[split] = dataset
@@ -272,6 +274,10 @@ class GraphPredictionWithFlagConfig(GraphPredictionConfig):
 class GraphPredictionWithFlagTask(GraphPredictionTask):
     """
     Graph prediction (classification or regression) task.
+
+    flag意思是Free Large-scale Adversarial Augmentation on Graphs,专门设计用于提升图神经网络（Graph Neural Networks, GNNs）的泛化能力和鲁棒性。它通过在训练过程中添加对抗性扰动来增强输入特征，从而使模型在面对真实数据和对抗性攻击时表现得更加稳健。
+	•	目标: 生成与原始训练数据稍有不同的样本，这些样本会使当前模型产生错误预测。
+	•	方法: 通常通过对输入数据添加小的扰动来生成对抗性样本。扰动的大小和方向是通过梯度计算得出的，以最大化模型的预测误差。
     """
 
     def __init__(self, cfg):
@@ -295,6 +301,11 @@ class GraphPredictionWithFlagTask(GraphPredictionTask):
             optimizer (~fairseq.optim.FairseqOptimizer): the optimizer
             update_num (int): the current update
             ignore_grad (bool): multiply loss by 0 if this is set to True
+
+            # Bian1d add:
+            flag_m (int): 表示在对抗性训练中，每个训练样本要经过的最大迭代次数。
+            flag_mag (float): 表示对抗性扰动的最大幅度
+            flag_step_size (float): 表示每一步对抗性扰动的步长
 
         Returns:
             tuple:
@@ -322,6 +333,7 @@ class GraphPredictionWithFlagTask(GraphPredictionTask):
                 .uniform_(-self.flag_step_size, self.flag_step_size)
                 .to(batched_data.device)
             )
+        # 第0轮
         perturb.requires_grad_()
         sample["perturb"] = perturb
         with torch.cuda.amp.autocast(enabled=(isinstance(optimizer, AMPOptimizer))):
@@ -332,6 +344,7 @@ class GraphPredictionWithFlagTask(GraphPredictionTask):
                 loss *= 0
         loss /= self.flag_m
         total_loss = 0
+        # 第1到flag_m轮
         for _ in range(self.flag_m - 1):
             optimizer.backward(loss)
             total_loss += loss.detach()
@@ -358,5 +371,6 @@ class GraphPredictionWithFlagTask(GraphPredictionTask):
             loss /= self.flag_m
         optimizer.backward(loss)
         total_loss += loss.detach()
+        
         logging_output["loss"] = total_loss
         return total_loss, sample_size, logging_output

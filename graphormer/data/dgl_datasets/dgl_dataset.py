@@ -129,6 +129,7 @@ class GraphormerDGLDataset(Dataset):
         shortest_path_result, path = algos.floyd_warshall(dense_adj.numpy())
         max_dist = np.amax(shortest_path_result)
         edge_input = algos.gen_edge_input(max_dist, path, attn_edge_type.numpy())
+        # 空间编码：每个节点到其他所有点之间的最短路径
         spatial_pos = torch.from_numpy((shortest_path_result)).long()
         attn_bias = torch.zeros([N + 1, N + 1], dtype=torch.float)  # with graph token
 

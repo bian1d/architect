@@ -123,12 +123,17 @@ class GraphAttnBias(nn.Module):
         )  # [n_graph, n_head, n_node+1, n_node+1]
 
         # spatial pos
+        # TODO:发现spatial_pos是咋搞的
         # [n_graph, n_node, n_node, n_head] -> [n_graph, n_head, n_node, n_node]
         spatial_pos_bias = self.spatial_pos_encoder(spatial_pos).permute(0, 3, 1, 2)
+        # 这个spatial_pos_bias应该就是所谓bij? 而且是一个常数。
+        # 感觉graph_attn_bias就类似0矩阵以及-inf的合体？
         graph_attn_bias[:, :, 1:, 1:] = graph_attn_bias[:, :, 1:, 1:] + spatial_pos_bias
 
         # reset spatial pos here
+        # TODO:整个图的那个virtual_Node距离其他节点的distance,都是固定的?
         t = self.graph_token_virtual_distance.weight.view(1, self.num_heads, 1)
+        # 第0号位的虚拟节点，每个都加上相同的虚拟距离编码，说明...?
         graph_attn_bias[:, :, 1:, 0] = graph_attn_bias[:, :, 1:, 0] + t
         graph_attn_bias[:, :, 0, :] = graph_attn_bias[:, :, 0, :] + t
 

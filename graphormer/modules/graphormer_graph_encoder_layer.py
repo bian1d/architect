@@ -123,6 +123,8 @@ class GraphormerGraphEncoderLayer(nn.Module):
         residual = x
         if self.pre_layernorm:
             x = self.self_attn_layer_norm(x)
+        # self_attn_bias是在graphormer_layers.py里Embedding好的，可以扔进MHA的。
+        # MHA就是普普通通的MHA，算完attention矩阵可以直接加bias
         x, attn = self.self_attn(
             query=x,
             key=x,
