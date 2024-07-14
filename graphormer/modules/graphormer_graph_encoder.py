@@ -216,9 +216,10 @@ class GraphormerGraphEncoder(nn.Module):
         if perturb is not None:
             #ic(torch.mean(torch.abs(x[:, 1, :])))
             #ic(torch.mean(torch.abs(perturb)))
+            # 直接往三维坐标(矩阵))里面加入perturb(矩阵)
             x[:, 1:, :] += perturb
 
-        # x: B x T x C
+        # x: B x T x C Batchsize * Node_num * Channel
 
         attn_bias = self.graph_attn_bias(batched_data)
 

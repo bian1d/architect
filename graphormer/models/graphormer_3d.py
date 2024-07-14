@@ -143,6 +143,7 @@ class GaussianLayer(nn.Module):
         self.K = K
         self.means = nn.Embedding(1, K)
         self.stds = nn.Embedding(1, K)
+        # edge_types 是一个表示每条边类型的张量，每个元素是一个整数，表示该边的类型索引。
         self.mul = nn.Embedding(edge_types, 1)
         self.bias = nn.Embedding(edge_types, 1)
         nn.init.uniform_(self.means.weight, 0, 3)
@@ -208,6 +209,7 @@ class NodeTaskHead(nn.Module):
         self.v_proj: Callable[[Tensor], Tensor] = nn.Linear(embed_dim, embed_dim)
         self.num_heads = num_heads
         self.scaling = (embed_dim // num_heads) ** -0.5
+        # Node level的知识embed, 投影到三维的力上。
         self.force_proj1: Callable[[Tensor], Tensor] = nn.Linear(embed_dim, 1)
         self.force_proj2: Callable[[Tensor], Tensor] = nn.Linear(embed_dim, 1)
         self.force_proj3: Callable[[Tensor], Tensor] = nn.Linear(embed_dim, 1)
@@ -360,6 +362,7 @@ class Graphormer3D(BaseFairseqModel):
         n_graph, n_node = atoms.size()
         delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
         dist: Tensor = delta_pos.norm(dim=-1)
+        # 节点之间的相对
         delta_pos /= dist.unsqueeze(-1) + 1e-5
 
         edge_type = atoms.view(n_graph, n_node, 1) * self.atom_types + atoms.view(
@@ -381,6 +384,7 @@ class Graphormer3D(BaseFairseqModel):
         output = F.dropout(
             graph_node_feature, p=self.input_dropout, training=self.training
         )
+        # output说明是直接从Node特征来的
         output = output.transpose(0, 1).contiguous()
 
         graph_attn_bias = self.bias_proj(gbf_feature).permute(0, 3, 1, 2).contiguous()
@@ -407,6 +411,7 @@ class Graphormer3D(BaseFairseqModel):
         eng_output *= output_mask
         eng_output = eng_output.sum(dim=-1)
 
+        # 这是一个MHA
         node_output = self.node_proc(output, graph_attn_bias, delta_pos)
 
         node_target_mask = output_mask.unsqueeze(-1)

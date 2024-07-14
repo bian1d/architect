@@ -13,7 +13,15 @@ import torch.distributed as dist
 pyximport.install(setup_args={"include_dirs": np.get_include()})
 from . import algos
 
-
+'''
+    x = torch.tensor([[1, 2, 3], [4, 5, 6]])
+    在默认 offset=512 的情况下：feature_num = 3  # 因为 x.size(1) 是 3
+    生成的 feature_offset 为 tensor([  1, 513, 1025])
+    结果为 tensor([[   2,  515, 1028], [   5,  518, 1031]])
+    这个函数的作用是为输入特征添加唯一的偏移量，以便后续的嵌入操作能够区分不同特征。这样可以避免特征值的冲突，使得每个特征都在不同的范围内，从而保证嵌入索引的唯一性。
+    BYD
+    我估摸着是因为输入特征普遍在1-64，要不就是one hot编码，所以说加一加就不是one hot了。
+'''
 @torch.jit.script
 def convert_to_single_emb(x, offset: int = 512):
     feature_num = x.size(1) if len(x.size()) > 1 else 1
@@ -36,6 +44,7 @@ def preprocess_item(item):
         edge_attr = edge_attr[:, None]
     attn_edge_type = torch.zeros([N, N, edge_attr.size(-1)], dtype=torch.long)
     attn_edge_type[edge_index[0, :], edge_index[1, :]] = (
+        # edge_attr是模型默认输入，我们全是1
         convert_to_single_emb(edge_attr) + 1
     )
 

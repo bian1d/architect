@@ -123,7 +123,7 @@ class GraphAttnBias(nn.Module):
         )  # [n_graph, n_head, n_node+1, n_node+1]
 
         # spatial pos
-        # TODO:发现spatial_pos是咋搞的
+        # TODO:发现spatial_pos是咋搞的=>就是2d里面的，3d也照样用的组件
         # [n_graph, n_node, n_node, n_head] -> [n_graph, n_head, n_node, n_node]
         spatial_pos_bias = self.spatial_pos_encoder(spatial_pos).permute(0, 3, 1, 2)
         # 这个spatial_pos_bias应该就是所谓bij? 而且是一个常数。
