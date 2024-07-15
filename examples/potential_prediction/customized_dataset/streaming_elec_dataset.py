@@ -96,7 +96,7 @@ class RandomElecDataset(InMemoryDataset):
             positions, charges = generate_electrons_iter_1(self.n_electrons)
             _, potential_energy = calculate_forces_and_potential_iter_1(positions, charges)
             # Convert data to Tensor
-            charges_tensor = torch.tensor(charges, dtype=torch.long).unsqueeze(-1)
+            charges_tensor = torch.tensor(charges, dtype=torch.float).unsqueeze(-1) # have bug: not in [1, 6)
             positions_tensor = torch.tensor(positions, dtype=torch.float)
             energy_tensor = torch.tensor([potential_energy], dtype=torch.float)
             edge_index = list(itertools.permutations(range(self.n_electrons), 2))
@@ -171,9 +171,6 @@ def create_customized_dataset():
     train_idx = np.arange(num_graphs)
     valid_idx = np.array([], dtype=np.long)  # 空列表
     test_idx = np.array([], dtype=np.long)  # 空列表
-
-    
-
 
     return {
         "dataset": dataset,
