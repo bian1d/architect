@@ -168,13 +168,10 @@ def create_customized_dataset():
     # import pdb; pdb.set_trace()
     num_graphs = len(dataset)
 
-    train_idx = np.arange(num_graphs)
-    valid_idx = np.array([], dtype=np.long)  # 空列表
-    test_idx = np.array([], dtype=np.long)  # 空列表
-
+    train_idx = dataset.train_idx
+    valid_idx = dataset.valid_idx
+    test_idx = dataset.test_idx
     
-
-
     return {
         "dataset": dataset,
         "train_idx": train_idx,
