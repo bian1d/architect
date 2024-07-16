@@ -362,7 +362,7 @@ class Graphormer3D(BaseFairseqModel):
         n_graph, n_node = atoms.size()
         delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
         dist: Tensor = delta_pos.norm(dim=-1)
-        # 节点之间的相对
+        # 节点之间的相对距离
         delta_pos /= dist.unsqueeze(-1) + 1e-5
 
         edge_type = atoms.view(n_graph, n_node, 1) * self.atom_types + atoms.view(
@@ -415,6 +415,7 @@ class Graphormer3D(BaseFairseqModel):
         node_output = self.node_proc(output, graph_attn_bias, delta_pos)
 
         node_target_mask = output_mask.unsqueeze(-1)
+        
         return eng_output, node_output, node_target_mask
 
 

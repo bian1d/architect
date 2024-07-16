@@ -215,11 +215,11 @@ class GraphPredictionTask(FairseqTask):
                 dataset, num_samples=len(dataset), seed=self.cfg.seed
             )
 
-        import pdb; pdb.set_trace()
 
         logger.info("Loaded {0} with #samples: {1}".format(split, len(dataset)))
 
         self.datasets[split] = dataset
+        
         return self.datasets[split]
 
     def build_model(self, cfg):
