@@ -9,7 +9,7 @@ import itertools
 ### Physical world data generater ###
 def generate_electrons_iter_1(n_electrons):
     positions = np.random.uniform(-5, 5, (n_electrons, 3)) # 均匀分布
-    charges = -np.random.randint(1, 6, size=(n_electrons))  # 每个原子带电1-5
+    charges = np.random.randint(1, 10, size=(n_electrons))  # 每个原子带电1-5
     return positions, charges
 
 def calculate_forces_and_potential_iter_1(positions, charges):
@@ -72,6 +72,7 @@ class RandomElecDataset(InMemoryDataset):
             self.train_data = self.index_select(self.train_idx)
             self.valid_data = self.index_select(self.valid_idx)
             self.test_data = self.index_select(self.test_idx)
+            # 1d find: train_data居然也是RandomElecDataset(64)
         elif train_set is not None:
             self.num_data = len(train_set) + len(valid_set) + len(test_set)
             self.train_data = self.create_subset(train_set)
@@ -94,23 +95,31 @@ class RandomElecDataset(InMemoryDataset):
         data_list = []
         for _ in range(self.batch_size):
             positions, charges = generate_electrons_iter_1(self.n_electrons)
-            _, potential_energy = calculate_forces_and_potential_iter_1(positions, charges)
+            forces, potential_energy = calculate_forces_and_potential_iter_1(positions, charges)
             # Convert data to Tensor
-            charges_tensor = torch.tensor(charges, dtype=torch.float).unsqueeze(-1) # have bug: not in [1, 6)
+            charges_tensor = torch.tensor(charges, dtype=torch.long).unsqueeze(-1)
             positions_tensor = torch.tensor(positions, dtype=torch.float)
             energy_tensor = torch.tensor([potential_energy], dtype=torch.float)
             edge_index = list(itertools.permutations(range(self.n_electrons), 2))
             edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
             edge_attr = torch.ones(edge_index.size(1), 1, dtype=torch.long)
-            data = Data(x=charges_tensor, pos=positions_tensor, 
-                        edge_index=edge_index, edge_attr=edge_attr, y=energy_tensor)
+            data = Data(x=charges_tensor,
+                        charges=charges_tensor,
+                        edge_index=edge_index, 
+                        edge_attr=edge_attr, 
+                        y=energy_tensor, 
+                        pos=positions_tensor, 
+                        tags=torch.ones_like(charges_tensor), 
+                        real_mask=torch.ones_like(charges_tensor, dtype=torch.long),
+                        forces=torch.tensor(forces, dtype=torch.float))
             data_list.append(data)
+
         return data_list
 
     def process(self):
         data_list = self.generate_dataset()
         self.data_list = data_list
-        data, slices = self.collate(data_list)
+        data, slices = self.collate(data_list) # 64*90 = 5760 = edge_attr个数
         torch.save((data, slices), self.processed_paths[0])
         self.data, self.slices = data, slices
         self.num_data = len(data_list)
@@ -161,11 +170,10 @@ def create_customized_dataset():
     batch_size = 64 # 你得骗
     
     dataset = RandomElecDataset(
-    root='/tmp/RandomElecDataset',
-    n_electrons=n_electrons,
-    batch_size=batch_size
-)
-    # import pdb; pdb.set_trace()
+        root='/tmp/RandomElecDataset',
+        n_electrons=n_electrons,
+        batch_size=batch_size
+    )
     num_graphs = len(dataset)
 
     # Enhan changed here.
@@ -182,13 +190,13 @@ def create_customized_dataset():
     }
 
 ### for debug ###
-if __name__ == "__main__":
-    # 定义并加载数据集
-    dataset = RandomElecDataset(n_electrons=10, max_length=1000)
-    import pdb; pdb.set_trace()
-    data_loader = DataLoader(dataset, batch_size=32, shuffle=True)
+# if __name__ == "__main__":
+#     # 定义并加载数据集
+#     dataset = RandomElecDataset(n_electrons=10, max_length=1000)
+#     import pdb; pdb.set_trace()
+#     data_loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
-    # 确认数据加载器工作正常
-    for batch in data_loader:
+#     # 确认数据加载器工作正常
+#     for batch in data_loader:
         
-        print(batch)
+#         print(batch)

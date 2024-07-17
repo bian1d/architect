@@ -39,6 +39,21 @@ import os
 
 logger = logging.getLogger(__name__)
 
+from pathlib import Path
+from typing import Sequence, Union
+
+from functools import lru_cache
+
+
+from torch import Tensor
+from fairseq.data import (
+    FairseqDataset,
+    BaseWrapperDataset,
+    NestedDictionaryDataset,
+    data_utils,
+)
+
+
 
 @dataclass
 class GraphPredictionConfig(FairseqDataclass):
@@ -129,6 +144,40 @@ class GraphPredictionConfig(FairseqDataclass):
         metadata={"help": "path to the module of user-defined dataset"},
     )
 
+class KeywordDataset(FairseqDataset):
+    def __init__(self, dataset, keyword, is_scalar=False, pad_fill=0):
+        super().__init__()
+        self.dataset = dataset
+        self.keyword = keyword
+        self.is_scalar = is_scalar
+        self.pad_fill = pad_fill
+
+    @lru_cache(maxsize=16)
+    def __getitem__(self, index):
+        return self.dataset[index][self.keyword]
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def collater(self, samples):
+        if self.is_scalar:
+            return torch.tensor(samples)
+        return pad_1d(samples, fill=self.pad_fill)
+
+
+def pad_1d(samples: Sequence[Tensor], fill=0, multiplier=8):
+    max_len = max(x.size(0) for x in samples)
+    max_len = (max_len + multiplier - 1) // multiplier * multiplier
+    n_samples = len(samples)
+    out = torch.full(
+        (n_samples, max_len, *samples[0].shape[1:]), fill, dtype=samples[0].dtype
+    )
+    for i in range(n_samples):
+        x_len = samples[i].size(0)
+        out[i][:x_len] = samples[i]
+    return out
+
+
 
 @register_task("graph_prediction", dataclass=GraphPredictionConfig)
 class GraphPredictionTask(FairseqTask):
@@ -197,30 +246,41 @@ class GraphPredictionTask(FairseqTask):
             spatial_pos_max=self.cfg.spatial_pos_max,
         )
 
-        data_sizes = np.array([self.max_nodes()] * len(batched_data))
-
-        target = TargetDataset(batched_data)
+        charges = KeywordDataset(batched_data, "charges")
+        pos = KeywordDataset(batched_data, "pos")
+        energy = KeywordDataset(batched_data, "y")
+        forces = KeywordDataset(batched_data, "forces")
+        real_mask = KeywordDataset(batched_data, "real_mask")
+        tags = KeywordDataset(batched_data, "tags")
 
         dataset = NestedDictionaryDataset(
             {
-                "nsamples": NumSamplesDataset(),
-                "net_input": {"batched_data": batched_data},
-                "target": target,
+                "net_input": {
+                    "pos": pos,
+                    "atoms": charges,
+                    "tags": tags,
+                    "real_mask": real_mask,
+                },
+                "targets": {
+                    "energy": energy,
+                    "forces": forces,
+                },
             },
-            sizes=data_sizes,
+            sizes=[np.zeros(len(charges))],
         )
-        import pdb; pdb.set_trace()
+
+        
 
         if split == "train" and self.cfg.train_epoch_shuffle:
             dataset = EpochShuffleDataset(
                 dataset, num_samples=len(dataset), seed=self.cfg.seed
             )
 
-
+        
         logger.info("Loaded {0} with #samples: {1}".format(split, len(dataset)))
 
         self.datasets[split] = dataset
-        
+
         return self.datasets[split]
 
     def build_model(self, cfg):
