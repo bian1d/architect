@@ -416,6 +416,7 @@ class Graphormer3D(BaseFairseqModel):
         node_output = self.node_proc(output, graph_attn_bias, delta_pos)
 
         node_target_mask = output_mask.unsqueeze(-1)
+        
         return eng_output, node_output, node_target_mask
 
 

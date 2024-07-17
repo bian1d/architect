@@ -220,6 +220,7 @@ class GraphPredictionTask(FairseqTask):
         logger.info("Loaded {0} with #samples: {1}".format(split, len(dataset)))
 
         self.datasets[split] = dataset
+        
         return self.datasets[split]
 
     def build_model(self, cfg):
@@ -319,6 +320,7 @@ class GraphPredictionWithFlagTask(GraphPredictionTask):
 
         batched_data = sample["net_input"]["batched_data"]["x"]
         n_graph, n_node = batched_data.shape[:2]
+        # 对x的embed representation进行了perturb
         perturb_shape = n_graph, n_node, model.encoder_embed_dim
         if self.flag_mag > 0:
             perturb = (
@@ -348,16 +350,20 @@ class GraphPredictionWithFlagTask(GraphPredictionTask):
         for _ in range(self.flag_m - 1):
             optimizer.backward(loss)
             total_loss += loss.detach()
+            # perturb_data 是对x的每个embedding的每一个数字都瞎加了一个扰动，所以说直接有符号+-就好了
+            # 向梯度上升（loss变大）的方向进行，核心代码，看不懂思密达·
             perturb_data = perturb.detach() + self.flag_step_size * torch.sign(
                 perturb.grad.detach()
             )
             if self.flag_mag > 0:
                 perturb_data_norm = torch.norm(perturb_data, dim=-1).detach()
+                # 是不是真的要进行缩放(长度不长于flag_mag)：一个充满bool变量的矩阵
                 exceed_mask = (perturb_data_norm > self.flag_mag).to(perturb_data)
+                # 重新加权，超过的调成flag_mag，没超过就是不变
                 reweights = (
                     self.flag_mag / perturb_data_norm * exceed_mask
                     + (1 - exceed_mask)
-                ).unsqueeze(-1)
+                ).unsqueeze(-1) # 与perturb_data形状一致
                 perturb_data = (perturb_data * reweights).detach()
             perturb.data = perturb_data.data
             perturb.grad[:] = 0

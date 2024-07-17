@@ -171,8 +171,8 @@ class GraphormerGraphEncoder(nn.Module):
         activation_dropout,
         activation_fn,
         export,
-        q_noise,
-        qn_block_size,
+        q_noise, # q_noise 是量化噪声的标准差，用于在模型训练过程中加入量化噪声，以增加模型的鲁棒性。它通过 quant_noise 函数应用到全连接层（fc1 和 fc2）以及自注意力层中。
+        qn_block_size, # q_noise 块大小
         pre_layernorm,
     ):
         return GraphormerGraphEncoderLayer(

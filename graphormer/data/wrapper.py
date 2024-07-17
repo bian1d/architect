@@ -49,7 +49,7 @@ def preprocess_item(item):
         edge_attr = edge_attr[:, None]
     attn_edge_type = torch.zeros([N, N, edge_attr.size(-1)], dtype=torch.long)
     attn_edge_type[edge_index[0, :], edge_index[1, :]] = (
-        # edge_attr是模型默认输入,我们全是1
+        # edge_attr是模型默认输入，我们全是1，而且是一维
         convert_to_single_emb(edge_attr) + 1
     )
 
