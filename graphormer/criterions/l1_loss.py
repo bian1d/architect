@@ -28,7 +28,12 @@ class GraphPredictionL1Loss(FairseqCriterion):
         with torch.no_grad():
             natoms = sample["net_input"]["batched_data"]["x"].shape[1]
 
-        logits = model(**sample["net_input"])
+        ## mogai by zeh ##
+        atoms = torch.cat([data.x for data in sample["net_input"]["batched_data"]], dim=0)
+        poses = torch.cat([data.pos for data in sample["net_input"]["batched_data"]], dim=0)
+        tags = torch.ones_like(atoms)
+        real_mask = torch.ones_like(atoms) # 注意，这里要求所有节点都是有效的。这是因为我们设计的数据每次都是10个电子，没有任何padding。
+        logits = model(atoms, poses, tags, real_mask)
         logits = logits[:, 0, :]
         targets = model.get_targets(sample, [logits])
 

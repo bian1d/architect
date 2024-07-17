@@ -49,6 +49,7 @@ class SelfMultiheadAttention(nn.Module):
         self.in_proj: Callable[[Tensor], Tensor] = nn.Linear(
             embed_dim, embed_dim * 3, bias=bias
         )
+        # *3是为了同时产生q,k,v.
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
     def forward(
@@ -67,7 +68,7 @@ class SelfMultiheadAttention(nn.Module):
         attn_weights = torch.bmm(q, k.transpose(1, 2)) + attn_bias
         attn_probs = softmax_dropout(attn_weights, self.dropout, self.training)
 
-        attn = torch.bmm(attn_probs, v)
+        attn = torch.bmm(attn_probs, v) #[n_node, n_graph * num_head, head_dim] -> [n_node, n_graph, embed_dim]
         attn = attn.transpose(0, 1).contiguous().view(n_node, n_graph, embed_dim)
         attn = self.out_proj(attn)
         return attn
@@ -362,7 +363,7 @@ class Graphormer3D(BaseFairseqModel):
         n_graph, n_node = atoms.size()
         delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
         dist: Tensor = delta_pos.norm(dim=-1)
-        # 节点之间的相对
+        # 节点之间的相对距离（正则化）
         delta_pos /= dist.unsqueeze(-1) + 1e-5
 
         edge_type = atoms.view(n_graph, n_node, 1) * self.atom_types + atoms.view(
