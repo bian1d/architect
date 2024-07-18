@@ -241,9 +241,9 @@ class GraphPredictionTask(FairseqTask):
 
         batched_data = BatchedDataDataset(
             batched_data,
-            # max_node=self.max_nodes(),
-            # multi_hop_max_dist=self.cfg.multi_hop_max_dist,
-            # spatial_pos_max=self.cfg.spatial_pos_max,
+            max_node=self.max_nodes(),
+            multi_hop_max_dist=self.cfg.multi_hop_max_dist,
+            spatial_pos_max=self.cfg.spatial_pos_max,
         )
 
         charges = KeywordDataset(batched_data, "charges")
@@ -271,10 +271,10 @@ class GraphPredictionTask(FairseqTask):
 
         
 
-        if split == "train" and self.cfg.train_epoch_shuffle:
-            dataset = EpochShuffleDataset(
-                dataset, num_samples=len(dataset), seed=self.cfg.seed
-            )
+        # if split == "train" and self.cfg.train_epoch_shuffle:
+        #     dataset = EpochShuffleDataset(
+        #         dataset, num_samples=len(dataset), seed=self.cfg.seed
+        #     )
 
         
         logger.info("Loaded {0} with #samples: {1}".format(split, len(dataset)))

@@ -9,7 +9,7 @@ import itertools
 ### Physical world data generater ###
 def generate_electrons_iter_1(n_electrons):
     positions = np.random.uniform(-5, 5, (n_electrons, 3)) # 均匀分布
-    charges = np.random.randint(1, 10, size=(n_electrons))  # 每个原子带电1-5
+    charges = np.random.randint(1, 3, size=(n_electrons))  # 每个原子带电1-5
     return positions, charges
 
 def calculate_forces_and_potential_iter_1(positions, charges):
@@ -149,7 +149,7 @@ class RandomElecDataset(InMemoryDataset):
             item.y = item.y.reshape(-1)
             return preprocess_item(item)
         else:
-            raise TypeError("index to a GraphormerPYGDataset can only be an integer.")
+            raise TypeError("index to a RandomElecDataset can only be an integer.")
 
 
     @property
@@ -167,7 +167,7 @@ class RandomElecDataset(InMemoryDataset):
 @register_dataset("streaming_elec_dataset")
 def create_customized_dataset():
     n_electrons = 10  # 假设为10个电子
-    batch_size = 64 # 你得骗
+    batch_size = 1000 # 你得骗
     
     dataset = RandomElecDataset(
         root='/tmp/RandomElecDataset',
