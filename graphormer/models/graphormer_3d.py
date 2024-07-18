@@ -159,6 +159,7 @@ class GaussianLayer(nn.Module):
         x = x.expand(-1, -1, -1, self.K)
         mean = self.means.weight.float().view(-1)
         std = self.stds.weight.float().view(-1).abs() + 1e-5
+        # 这里有报错，说cuda device可能有问题,大概率index，数据类型，数值的问题
         return gaussian(x.float(), mean, std).type_as(self.means.weight)
 
 class RBF(nn.Module):
@@ -362,24 +363,24 @@ class Graphormer3D(BaseFairseqModel):
 
         n_graph, n_node = atoms.size()
         delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
+
         dist: Tensor = delta_pos.norm(dim=-1)
         # 节点之间的相对距离（正则化）
         delta_pos /= dist.unsqueeze(-1) + 1e-5
-
         edge_type = atoms.view(n_graph, n_node, 1) * self.atom_types + atoms.view(
             n_graph, 1, n_node
-        )
-
+        ) #[batch_size * n_node * n_node]
         gbf_feature = self.gbf(dist, edge_type)
         edge_features = gbf_feature.masked_fill(
             padding_mask.unsqueeze(1).unsqueeze(-1), 0.0
-        )
-
+        ) # [batch_size * n_node * n_node * 128]
+        
         graph_node_feature = (
-            self.tag_encoder(tags)
+            # self.tag_encoder(tags) # do we need tag_encoder?
             + self.atom_encoder(atoms)
             + self.edge_proj(edge_features.sum(dim=-2))
         )
+        # [batch_size * n_node * 768]
 
         # ===== MAIN MODEL =====
         output = F.dropout(
@@ -400,21 +401,21 @@ class Graphormer3D(BaseFairseqModel):
 
         output = self.final_ln(output)
         output = output.transpose(0, 1)
-
+        # [batch_size, n_node, 768]
         eng_output = F.dropout(output, p=0.1, training=self.training)
         eng_output = (
-            self.engergy_proj(eng_output) * self.energe_agg_factor(tags)
+            self.engergy_proj(eng_output)
         ).flatten(-2)
-        output_mask = (
-            tags > 0
-        ) & real_mask  # no need to consider padding, since padding has tag 0, real_mask False
+        # [batch_size, n_node]
+        output_mask = real_mask  # no need to consider padding, since padding has tag 0, real_mask False
 
         eng_output *= output_mask
         eng_output = eng_output.sum(dim=-1)
+        # [batch_size]
 
         # 这是一个MHA
         node_output = self.node_proc(output, graph_attn_bias, delta_pos)
-
+        # [batch_size, n_node, 3]
         node_target_mask = output_mask.unsqueeze(-1)
         
         return eng_output, node_output, node_target_mask

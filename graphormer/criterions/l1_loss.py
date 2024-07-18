@@ -35,14 +35,19 @@ class GraphPredictionL1Loss(FairseqCriterion):
         tags = sample["net_input"]["tags"]
         real_mask = sample["net_input"]["real_mask"] 
         logits = model(atoms=atoms, tags=tags, pos=poses, real_mask=real_mask)
-        logits = logits[:, 0, :]
-        targets = model.get_targets(sample, [logits])
-        
-        loss = nn.L1Loss(reduction="sum")(logits, targets[: logits.size(0)])
+        energy, force, bsz = logits
+        # [bsz], [bsz, natoms, 3]
+        true_energy, true_force = sample["targets"]["energy"], sample["targets"]["forces"]
+        true_energy = true_energy[:, 0]
+        # [bsz], [bsz, natoms, 3]
+        energy_loss = nn.L1Loss(reduction="mean")(energy, true_energy)
+        force_loss = nn.L1Loss(reduction="mean")(force, true_force)
+
+        loss = energy_loss
 
         logging_output = {
             "loss": loss.data,
-            "sample_size": logits.size(0),
+            "sample_size": sample_size,
             "nsentences": sample_size,
             "ntokens": natoms,
         }

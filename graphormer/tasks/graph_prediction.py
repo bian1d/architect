@@ -241,9 +241,9 @@ class GraphPredictionTask(FairseqTask):
 
         batched_data = BatchedDataDataset(
             batched_data,
-            max_node=self.max_nodes(),
-            multi_hop_max_dist=self.cfg.multi_hop_max_dist,
-            spatial_pos_max=self.cfg.spatial_pos_max,
+            # max_node=self.max_nodes(),
+            # multi_hop_max_dist=self.cfg.multi_hop_max_dist,
+            # spatial_pos_max=self.cfg.spatial_pos_max,
         )
 
         charges = KeywordDataset(batched_data, "charges")

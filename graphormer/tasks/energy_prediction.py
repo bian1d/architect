@@ -1,141 +1,33 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-# Copyright (c) Facebook, Inc. and its affiliates.
-#
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
+from pathlib import Path
+from typing import Sequence, Union
 
-import logging
+import pickle
+from functools import lru_cache
 
-import contextlib
-from dataclasses import dataclass, field
-from omegaconf import II, open_dict, OmegaConf
-import importlib
+import lmdb
 
 import numpy as np
-from fairseq.data import (
-    NestedDictionaryDataset,
-    NumSamplesDataset,
-)
-from fairseq.tasks import FairseqDataclass, FairseqTask, register_task
-
-from graphormer.pretrain import load_pretrained_model
-
-from ..data.dataset import (
-    BatchedDataDataset,
-    TargetDataset,
-    GraphormerDataset,
-    EpochShuffleDataset,
-)
-
 import torch
-from fairseq.optim.amp_optimizer import AMPOptimizer
-import math
+from torch import Tensor
+from fairseq.data import (
+    FairseqDataset,
+    BaseWrapperDataset,
+    NestedDictionaryDataset,
+    data_utils,
+)
+from fairseq.tasks import FairseqTask, register_task
 
-from ..data import DATASET_REGISTRY
+from ..data.dataset import EpochShuffleDataset, GraphormerDataset
+
 import sys
 import os
+import importlib
+from ..data import DATASET_REGISTRY
 
-logger = logging.getLogger(__name__)
-
-
-@dataclass
-class EnergyPredictionConfig(FairseqDataclass):
-    dataset_name: str = field(
-        default="pcqm4m",
-        metadata={"help": "name of the dataset"},
-    )
-
-    num_classes: int = field(
-        default=-1,
-        metadata={"help": "number of classes or regression targets"},
-    )
-
-    max_nodes: int = field(
-        default=128,
-        metadata={"help": "max nodes per graph"},
-    )
-
-    dataset_source: str = field(
-        default="pyg",
-        metadata={"help": "source of graph dataset, can be: pyg, dgl, ogb, smiles"},
-    )
-
-    num_atoms: int = field(
-        default=512 * 9,
-        metadata={"help": "number of atom types in the graph"},
-    )
-
-    num_edges: int = field(
-        default=512 * 3,
-        metadata={"help": "number of edge types in the graph"},
-    )
-
-    num_in_degree: int = field(
-        default=512,
-        metadata={"help": "number of in degree types in the graph"},
-    )
-
-    num_out_degree: int = field(
-        default=512,
-        metadata={"help": "number of out degree types in the graph"},
-    )
-
-    num_spatial: int = field(
-        default=512,
-        metadata={"help": "number of spatial types in the graph"},
-    )
-
-    num_edge_dis: int = field(
-        default=128,
-        metadata={"help": "number of edge dis types in the graph"},
-    )
-
-    multi_hop_max_dist: int = field(
-        default=5,
-        metadata={"help": "max distance of multi-hop edges"},
-    )
-
-    spatial_pos_max: int = field(
-        default=1024,
-        metadata={"help": "max distance of multi-hop edges"},
-    )
-
-    edge_type: str = field(
-        default="multi_hop",
-        metadata={"help": "edge type in the graph"},
-    )
-
-    seed: int = II("common.seed")
-
-    pretrained_model_name: str = field(
-        default="none",
-        metadata={"help": "name of used pretrained model"},
-    )
-
-    load_pretrained_model_output_layer: bool = field(
-        default=False,
-        metadata={"help": "whether to load the output layer of pretrained model"},
-    )
-
-    train_epoch_shuffle: bool = field(
-        default=False,
-        metadata={"help": "whether to shuffle the dataset at each epoch"},
-    )
-
-    user_data_dir: str = field(
-        default="",
-        metadata={"help": "path to the module of user-defined dataset"},
-    )
-
-
-@register_task("energy_prediction", dataclass=EnergyPredictionConfig)
-class EnergyPredictionTask(FairseqTask):
-    """
-    Graph prediction (classification or regression) task.
-    """
-
+class LMDBDataset:
     def __init__(self, cfg):
         super().__init__(cfg)
         if cfg.user_data_dir != "":
@@ -157,6 +49,7 @@ class EnergyPredictionTask(FairseqTask):
                 dataset_source=cfg.dataset_source,
                 seed=cfg.seed,
             )
+        # import pdb; pdb.set_trace()
 
     def __import_user_defined_datasets(self, dataset_dir):
         dataset_dir = dataset_dir.strip("/")
@@ -173,77 +66,203 @@ class EnergyPredictionTask(FairseqTask):
                 task_name = file[: file.find(".py")] if file.endswith(".py") else file
                 importlib.import_module(module_name + "." + task_name)
 
+    def __len__(self):
+        return self.len
+
+    @lru_cache(maxsize=16)
+    def __getitem__(self, idx: int) -> dict[str, Union[Tensor, float]]:
+        if idx < 0 or idx >= self.len:
+            raise IndexError
+        data = pickle.loads(self.env.begin().get(f"{idx}".encode()))
+        return dict(
+            pos=torch.as_tensor(data["pos"]).float(),
+            pos_relaxed=torch.as_tensor(data["pos_relaxed"]).float(),
+            cell=torch.as_tensor(data["cell"]).float().view(3, 3),
+            atoms=torch.as_tensor(data["atomic_numbers"]).long(),
+            tags=torch.as_tensor(data["tags"]).long(),
+            relaxed_energy=data["y_relaxed"],  # python float
+        )
+
+
+class PBCDataset:
+    def __init__(self, dataset: LMDBDataset):
+        self.dataset = dataset
+        self.cell_offsets = torch.tensor(
+            [
+                [-1, -1, 0],
+                [-1, 0, 0],
+                [-1, 1, 0],
+                [0, -1, 0],
+                [0, 1, 0],
+                [1, -1, 0],
+                [1, 0, 0],
+                [1, 1, 0],
+            ],
+        ).float()
+        self.n_cells = self.cell_offsets.size(0)
+        self.cutoff = 8
+        self.filter_by_tag = True
+
+    def __len__(self):
+        return len(self.dataset)
+
+    @lru_cache(maxsize=16)
+    def __getitem__(self, idx):
+        data = self.dataset[idx]
+
+        pos = data["pos"]
+        pos_relaxed = data["pos_relaxed"]
+        cell = data["cell"]
+        atoms = data["atoms"]
+        tags = data["tags"]
+
+        offsets = torch.matmul(self.cell_offsets, cell).view(self.n_cells, 1, 3)
+        expand_pos = (pos.unsqueeze(0).expand(self.n_cells, -1, -1) + offsets).view(
+            -1, 3
+        )
+        expand_pos_relaxed = (
+            pos.unsqueeze(0).expand(self.n_cells, -1, -1) + offsets
+        ).view(-1, 3)
+        src_pos = pos[tags > 1] if self.filter_by_tag else pos
+
+        dist: Tensor = (src_pos.unsqueeze(1) - expand_pos.unsqueeze(0)).norm(dim=-1)
+        used_mask = (dist < self.cutoff).any(dim=0) & tags.ne(2).repeat(
+            self.n_cells
+        )  # not copy ads
+        used_expand_pos = expand_pos[used_mask]
+        used_expand_pos_relaxed = expand_pos_relaxed[used_mask]
+
+        used_expand_tags = tags.repeat(self.n_cells)[
+            used_mask
+        ]  # original implementation use zeros, need to test
+        return dict(
+            pos=torch.cat([pos, used_expand_pos], dim=0),
+            atoms=torch.cat([atoms, atoms.repeat(self.n_cells)[used_mask]]),
+            tags=torch.cat([tags, used_expand_tags]),
+            real_mask=torch.cat(
+                [
+                    torch.ones_like(tags, dtype=torch.bool),
+                    torch.zeros_like(used_expand_tags, dtype=torch.bool),
+                ]
+            ),
+            deltapos=torch.cat(
+                [pos_relaxed - pos, used_expand_pos_relaxed - used_expand_pos], dim=0
+            ),
+            relaxed_energy=data["relaxed_energy"],
+        )
+
+
+def pad_1d(samples: Sequence[Tensor], fill=0, multiplier=8):
+    max_len = max(x.size(0) for x in samples)
+    max_len = (max_len + multiplier - 1) // multiplier * multiplier
+    n_samples = len(samples)
+    out = torch.full(
+        (n_samples, max_len, *samples[0].shape[1:]), fill, dtype=samples[0].dtype
+    )
+    for i in range(n_samples):
+        x_len = samples[i].size(0)
+        out[i][:x_len] = samples[i]
+    return out
+
+
+class AtomDataset(FairseqDataset):
+    def __init__(self, dataset, keyword):
+        super().__init__()
+        self.dataset = dataset
+        self.keyword = keyword
+        self.atom_list = list(range(-20, 20))
+        # fill others as unk
+        unk_idx = len(self.atom_list) + 1
+        self.atom_mapper = torch.full((128,), unk_idx)
+        for idx, atom in enumerate(self.atom_list):
+            self.atom_mapper[atom] = idx + 1  # reserve 0 for paddin
+
+    @lru_cache(maxsize=16)
+    def __getitem__(self, index):
+        atoms: Tensor = self.dataset[index][self.keyword]
+        return self.atom_mapper[atoms]
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def collater(self, samples):
+        return pad_1d(samples)
+
+
+class KeywordDataset(FairseqDataset):
+    def __init__(self, dataset, keyword, is_scalar=False, pad_fill=0):
+        super().__init__()
+        self.dataset = dataset
+        self.keyword = keyword
+        self.is_scalar = is_scalar
+        self.pad_fill = pad_fill
+
+    @lru_cache(maxsize=16)
+    def __getitem__(self, index):
+        return self.dataset[index][self.keyword]
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def collater(self, samples):
+        if self.is_scalar:
+            return torch.tensor(samples)
+        return pad_1d(samples, fill=self.pad_fill)
+
+
+@register_task("energy_prediction")
+class EnergyPredictionTask(FairseqTask):
     @classmethod
-    def setup_task(cls, cfg, **kwargs):
-        assert cfg.num_classes > 0, "Must set task.num_classes"
-        return cls(cfg)
-
-    def load_dataset(self, split, combine=False, **kwargs):
-        """Load a given dataset split (e.g., train, valid, test)."""
-
-        assert split in ["train", "valid", "test"]
-
-        if split == "train":
-            batched_data = self.dm.dataset_train
-        elif split == "valid":
-            batched_data = self.dm.dataset_val
-        elif split == "test":
-            batched_data = self.dm.dataset_test
-
-        batched_data = BatchedDataDataset(
-            batched_data,
-            max_node=self.max_nodes(),
-            multi_hop_max_dist=self.cfg.multi_hop_max_dist,
-            spatial_pos_max=self.cfg.spatial_pos_max,
-        )
-
-        data_sizes = np.array([self.max_nodes()] * len(batched_data))
-
-        target = TargetDataset(batched_data)
-
-        dataset = NestedDictionaryDataset(
-            {
-                "nsamples": NumSamplesDataset(),
-                "net_input": {"atoms": batched_data.x, "pos": batched_data.pos, "tags": None},
-                "target": target,
-            },
-            sizes=data_sizes,
-        )
-        import pdb; pdb.set_trace()
-
-        if split == "train" and self.cfg.train_epoch_shuffle:
-            dataset = EpochShuffleDataset(
-                dataset, num_samples=len(dataset), seed=self.cfg.seed
-            )
-
-        import pdb; pdb.set_trace()
-
-        logger.info("Loaded {0} with #samples: {1}".format(split, len(dataset)))
-
-        self.datasets[split] = dataset
-        return self.datasets[split]
-
-    def build_model(self, cfg):
-        from fairseq import models
-
-        with open_dict(cfg) if OmegaConf.is_config(cfg) else contextlib.ExitStack():
-            cfg.max_nodes = self.cfg.max_nodes
-
-        model = models.build_model(cfg, self)
-
-        return model
-
-    def max_nodes(self):
-        return self.cfg.max_nodes
-
-    @property
-    def source_dictionary(self):
-        return None
+    def add_args(cls, parser):
+        parser.add_argument("data", metavar="FILE", help="directory for data")
 
     @property
     def target_dictionary(self):
         return None
 
-    @property
-    def label_dictionary(self):
-        return None
+    def load_dataset(self, split, combine=False, **kwargs):
+        assert split in [
+            "train",
+            "valid",
+            "test",
+        ], "invalid split: {}!".format(split)
+        print(" > Loading {} ...".format(split))
+
+        db_path = str(Path(self.cfg.data) / split / "data.lmdb")
+        lmdb_dataset = LMDBDataset(db_path)
+        pbc_dataset = PBCDataset(lmdb_dataset)
+
+        atoms = AtomDataset(pbc_dataset, "atoms")
+        tags = KeywordDataset(pbc_dataset, "tags")
+        real_mask = KeywordDataset(pbc_dataset, "real_mask")
+
+        pos = KeywordDataset(pbc_dataset, "pos")
+
+        relaxed_energy = KeywordDataset(pbc_dataset, "relaxed_energy", is_scalar=True)
+        deltapos = KeywordDataset(pbc_dataset, "deltapos")
+
+        dataset = NestedDictionaryDataset(
+            {
+                "net_input": {
+                    "pos": pos,
+                    "atoms": atoms,
+                    "tags": tags,
+                    "real_mask": real_mask,
+                },
+                "targets": {
+                    "relaxed_energy": relaxed_energy,
+                    "deltapos": deltapos,
+                },
+            },
+            sizes=[np.zeros(len(atoms))],
+        )
+
+        if split == "train":
+            dataset = EpochShuffleDataset(
+                dataset,
+                num_samples=len(atoms),
+                seed=self.cfg.seed,
+            )
+
+        print("| Loaded {} with {} samples".format(split, len(dataset)))
+        self.datasets[split] = dataset

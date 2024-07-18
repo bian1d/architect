@@ -109,8 +109,8 @@ class RandomElecDataset(InMemoryDataset):
                         edge_attr=edge_attr, 
                         y=energy_tensor, 
                         pos=positions_tensor, 
-                        tags=torch.ones_like(charges_tensor), 
-                        real_mask=torch.ones_like(charges_tensor, dtype=torch.long),
+                        tags=torch.ones_like(charges_tensor).squeeze(), 
+                        real_mask=torch.ones_like(charges_tensor, dtype=torch.bool).squeeze(),
                         forces=torch.tensor(forces, dtype=torch.float))
             data_list.append(data)
 
