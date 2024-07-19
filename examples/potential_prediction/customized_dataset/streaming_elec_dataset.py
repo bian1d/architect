@@ -9,7 +9,7 @@ import itertools
 ### Physical world data generater ###
 def generate_electrons_iter_1(n_electrons):
     positions = np.random.uniform(-5, 5, (n_electrons, 3)) # 均匀分布
-    charges = np.random.randint(1, 3, size=(n_electrons))  # 每个原子带电1-5
+    charges = np.random.randint(1, 10, size=(n_electrons))  # 每个原子带电1-5
     return positions, charges
 
 def calculate_forces_and_potential_iter_1(positions, charges):
@@ -56,6 +56,7 @@ class RandomElecDataset(InMemoryDataset):
         self.seed = seed
         super().__init__(root, transform, pre_transform)
         self.process()
+        # import pudb; pudb.set_trace()
         if train_idx is None and train_set is None:
             
             train_valid_idx, test_idx = train_test_split(
@@ -64,7 +65,7 @@ class RandomElecDataset(InMemoryDataset):
                 random_state=seed,
             )
             train_idx, valid_idx = train_test_split(
-                train_valid_idx, test_size=self.num_data // 5, random_state=seed
+                train_valid_idx, test_size=self.num_data // 10, random_state=seed
             )
             self.train_idx = torch.from_numpy(train_idx)
             self.valid_idx = torch.from_numpy(valid_idx)
@@ -99,6 +100,7 @@ class RandomElecDataset(InMemoryDataset):
             # Convert data to Tensor
             charges_tensor = torch.tensor(charges, dtype=torch.long).unsqueeze(-1)
             positions_tensor = torch.tensor(positions, dtype=torch.float)
+
             energy_tensor = torch.tensor([potential_energy], dtype=torch.float)
             edge_index = list(itertools.permutations(range(self.n_electrons), 2))
             edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
@@ -117,12 +119,14 @@ class RandomElecDataset(InMemoryDataset):
         return data_list
 
     def process(self):
+        print("processing the data")
         data_list = self.generate_dataset()
         self.data_list = data_list
         data, slices = self.collate(data_list) # 64*90 = 5760 = edge_attr个数
         torch.save((data, slices), self.processed_paths[0])
         self.data, self.slices = data, slices
         self.num_data = len(data_list)
+        print("finish processing")
 
     def len(self):
         return self.num_data
@@ -167,7 +171,7 @@ class RandomElecDataset(InMemoryDataset):
 @register_dataset("streaming_elec_dataset")
 def create_customized_dataset():
     n_electrons = 10  # 假设为10个电子
-    batch_size = 1000 # 你得骗
+    batch_size = 409600 # 你得骗
     
     dataset = RandomElecDataset(
         root='/tmp/RandomElecDataset',
@@ -180,7 +184,6 @@ def create_customized_dataset():
     train_idx = dataset.train_idx
     valid_idx = dataset.valid_idx
     test_idx = dataset.test_idx
-    
     return {
         "dataset": dataset,
         "train_idx": train_idx,

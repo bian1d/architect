@@ -225,6 +225,7 @@ class GraphPredictionTask(FairseqTask):
     @classmethod
     def setup_task(cls, cfg, **kwargs):
         assert cfg.num_classes > 0, "Must set task.num_classes"
+        # import pudb; pudb.set_trace()
         return cls(cfg)
 
     def load_dataset(self, split, combine=False, **kwargs):
