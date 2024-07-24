@@ -54,7 +54,7 @@ from fairseq.data import (
 )
 
 
-
+# 这个就是默认的cfg文件内容，如果你想换成自己的值也没问题
 @dataclass
 class GraphPredictionConfig(FairseqDataclass):
     dataset_name: str = field(
@@ -222,10 +222,11 @@ class GraphPredictionTask(FairseqTask):
                 task_name = file[: file.find(".py")] if file.endswith(".py") else file
                 importlib.import_module(module_name + "." + task_name)
 
+    # 实际上在注册完task之后，会调用这个函数，然后在这个函数里面会调用setup_task
     @classmethod
     def setup_task(cls, cfg, **kwargs):
         assert cfg.num_classes > 0, "Must set task.num_classes"
-        # import pudb; pudb.set_trace()
+
         return cls(cfg)
 
     def load_dataset(self, split, combine=False, **kwargs):

@@ -43,12 +43,15 @@ class GraphPredictionL1Loss(FairseqCriterion):
         # [bsz], [bsz, natoms, 3]
         true_energy, true_force = sample["targets"]["energy"], sample["targets"]["forces"]
         true_energy = true_energy[:, 0]
+        force = force[real_mask].reshape(sample_size, -1, 3)
+        true_force = true_force[real_mask].reshape(sample_size, -1, 3)
         # [bsz], [bsz, natoms, 3]
         energy_loss = nn.L1Loss(reduction="mean")(energy, true_energy)
         force_loss = nn.L1Loss(reduction="mean")(force, true_force)
 
-        loss = energy_loss
-        # loss = force_loss
+        # loss = energy_loss
+        loss = force_loss
+        import pdb; pdb.set_trace()
         # import pudb; pudb.set_trace() 
 
         logging_output = {

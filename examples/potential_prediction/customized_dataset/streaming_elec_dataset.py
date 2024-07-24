@@ -9,7 +9,7 @@ import itertools
 ### Physical world data generater ###
 def generate_electrons_iter_1(n_electrons):
     positions = np.random.uniform(-5, 5, (n_electrons, 3)) # 均匀分布
-    charges = np.random.randint(1, 10, size=(n_electrons))  # 每个原子带电1-5
+    charges = np.random.randint(1, 10, size=(n_electrons))  # 每个原子带电1-10
     return positions, charges
 
 def calculate_forces_and_potential_iter_1(positions, charges):
@@ -170,8 +170,8 @@ class RandomElecDataset(InMemoryDataset):
 
 @register_dataset("streaming_elec_dataset")
 def create_customized_dataset():
-    n_electrons = 10  # 假设为10个电子
-    batch_size = 409600 # 你得骗
+    n_electrons = 16  # 假设为10个电子
+    batch_size = 10240 # 你得骗
     
     dataset = RandomElecDataset(
         root='/tmp/RandomElecDataset',
