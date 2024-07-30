@@ -359,6 +359,9 @@ class Graphormer3D(BaseFairseqModel):
         return super().set_num_updates(num_updates)
 
     def forward(self, atoms: Tensor, tags: Tensor, pos: Tensor, real_mask: Tensor):
+        # pos: [64, 10(16), 3]
+        # eng_output: [64] 
+        # -> node_output [64, 10(16), 3]
         padding_mask = atoms.eq(0)
 
         n_graph, n_node = atoms.size()
@@ -414,6 +417,7 @@ class Graphormer3D(BaseFairseqModel):
         # [batch_size]
 
         # 这是一个MHA
+        # todo: 求导
         node_output = self.node_proc(output, graph_attn_bias, delta_pos)
         # [batch_size, n_node, 3]
         node_target_mask = output_mask.unsqueeze(-1)
