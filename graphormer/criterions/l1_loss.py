@@ -49,10 +49,8 @@ class GraphPredictionL1Loss(FairseqCriterion):
         energy_loss = nn.L1Loss(reduction="mean")(energy, true_energy)
         force_loss = nn.L1Loss(reduction="mean")(force, true_force)
 
-        # loss = energy_loss
-        loss = force_loss
-        import pdb; pdb.set_trace()
-        # import pudb; pudb.set_trace() 
+        loss = energy_loss
+        # loss = force_loss
 
         logging_output = {
             "loss": loss.data,
@@ -60,6 +58,7 @@ class GraphPredictionL1Loss(FairseqCriterion):
             "nsentences": sample_size,
             "ntokens": natoms,
         }
+        import pdb; pdb.set_trace()
         return loss, sample_size, logging_output
 
     @staticmethod

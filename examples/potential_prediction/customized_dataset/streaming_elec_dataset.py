@@ -171,7 +171,7 @@ class RandomElecDataset(InMemoryDataset):
 @register_dataset("streaming_elec_dataset")
 def create_customized_dataset():
     n_electrons = 16  # 假设为10个电子
-    batch_size = 10240 # 你得骗
+    batch_size = 40960 # 你得骗
     
     dataset = RandomElecDataset(
         root='/tmp/RandomElecDataset',
@@ -180,7 +180,6 @@ def create_customized_dataset():
     )
     num_graphs = len(dataset)
 
-    # Enhan changed here.
     train_idx = dataset.train_idx
     valid_idx = dataset.valid_idx
     test_idx = dataset.test_idx

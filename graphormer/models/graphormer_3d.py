@@ -352,6 +352,7 @@ class Graphormer3D(BaseFairseqModel):
         self.node_proc: Callable[[Tensor, Tensor, Tensor], Tensor] = NodeTaskHead(
             self.args.embed_dim, self.args.attention_heads
         )
+        
 
     def set_num_updates(self, num_updates):
         self.num_updates = num_updates
@@ -405,6 +406,7 @@ class Graphormer3D(BaseFairseqModel):
             output = output.transpose(0, 1)
             # [batch_size, n_node, 768]
             eng_output = F.dropout(output, p=0.1, training=self.training)
+            nan_mask = torch.isnan(eng_output).any()
             eng_output = (
                 self.engergy_proj(eng_output)
             ).flatten(-2)
@@ -418,16 +420,14 @@ class Graphormer3D(BaseFairseqModel):
             # 这是一个MHA
             # node_output = self.node_proc(output, graph_attn_bias, delta_pos)
             grad_outputs = torch.ones_like(eng_output)
-            # forces DEBUG
-            # torch.autograd.set_detect_anomaly(True)
             
-
+            # import pudb; pudb.set_trace()
             node_output = -torch.autograd.grad(eng_output, 
                                             pos, 
                                             create_graph=True, 
                                             retain_graph=True, 
                                             grad_outputs=grad_outputs)[0] 
-            # import pudb; pudb.set_trace()   
+            
             # [batch_size, n_node, 3]
             node_target_mask = output_mask.unsqueeze(-1)
         
