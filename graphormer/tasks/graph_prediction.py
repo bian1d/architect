@@ -54,7 +54,7 @@ from fairseq.data import (
 )
 
 
-
+# 这个就是默认的cfg文件内容，如果你想换成自己的值也没问题
 @dataclass
 class GraphPredictionConfig(FairseqDataclass):
     dataset_name: str = field(
@@ -222,14 +222,17 @@ class GraphPredictionTask(FairseqTask):
                 task_name = file[: file.find(".py")] if file.endswith(".py") else file
                 importlib.import_module(module_name + "." + task_name)
 
+    # 实际上在注册完task之后，会调用这个函数，然后在这个函数里面会调用setup_task
     @classmethod
     def setup_task(cls, cfg, **kwargs):
         assert cfg.num_classes > 0, "Must set task.num_classes"
+
         return cls(cfg)
 
     def load_dataset(self, split, combine=False, **kwargs):
         """Load a given dataset split (e.g., train, valid, test)."""
 
+        # import pudb; pudb.set_trace()
         assert split in ["train", "valid", "test"]
 
         if split == "train":
@@ -307,6 +310,45 @@ class GraphPredictionTask(FairseqTask):
     @property
     def label_dictionary(self):
         return None
+
+    # fairseq的训练,主要走这个
+    def train_step(
+        self, sample, model, criterion, optimizer, update_num, ignore_grad=False
+    ):
+        """
+        Do forward and backward, and return the loss as computed by *criterion*
+        for the given *model* and *sample*.
+
+        Args:
+            sample (dict): the mini-batch. The format is defined by the
+                :class:`~fairseq.data.FairseqDataset`.
+            model (~fairseq.models.BaseFairseqModel): the model
+            criterion (~fairseq.criterions.FairseqCriterion): the criterion
+            optimizer (~fairseq.optim.FairseqOptimizer): the optimizer
+            update_num (int): the current update
+            ignore_grad (bool): multiply loss by 0 if this is set to True
+
+        Returns:
+            tuple:
+                - the loss
+                - the sample size, which is used as the denominator for the
+                  gradient
+                - logging outputs to display while training
+        """
+        model.train()
+        model.set_num_updates(update_num)
+        with torch.autograd.profiler.record_function("forward"):
+            with torch.cuda.amp.autocast(enabled=(isinstance(optimizer, AMPOptimizer))):
+                loss, sample_size, logging_output = criterion(model, sample)
+        if ignore_grad:
+            loss *= 0
+        with torch.autograd.profiler.record_function("backward"):
+            optimizer.backward(loss)
+            # for name, param in model.named_parameters():
+            #     if param.grad is not None:
+            #         assert not torch.isnan(param.grad).any(), f"NaN gradient in {name}"
+            # import pudb; pudb.set_trace()
+        return loss, sample_size, logging_output 
 
 
 @dataclass

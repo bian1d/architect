@@ -159,7 +159,6 @@ class GaussianLayer(nn.Module):
         x = x.expand(-1, -1, -1, self.K)
         mean = self.means.weight.float().view(-1)
         std = self.stds.weight.float().view(-1).abs() + 1e-5
-        # 这里有报错，说cuda device可能有问题,大概率index，数据类型，数值的问题
         return gaussian(x.float(), mean, std).type_as(self.means.weight)
 
 class RBF(nn.Module):
@@ -353,6 +352,7 @@ class Graphormer3D(BaseFairseqModel):
         self.node_proc: Callable[[Tensor, Tensor, Tensor], Tensor] = NodeTaskHead(
             self.args.embed_dim, self.args.attention_heads
         )
+        
 
     def set_num_updates(self, num_updates):
         self.num_updates = num_updates
@@ -364,63 +364,72 @@ class Graphormer3D(BaseFairseqModel):
         # -> node_output [64, 10(16), 3]
         padding_mask = atoms.eq(0)
 
-        n_graph, n_node = atoms.size()
-        delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
+            n_graph, n_node = atoms.size()
+            delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
 
-        dist: Tensor = delta_pos.norm(dim=-1)
-        # 节点之间的相对距离（正则化）
-        delta_pos /= dist.unsqueeze(-1) + 1e-5
-        edge_type = atoms.view(n_graph, n_node, 1) * self.atom_types + atoms.view(
-            n_graph, 1, n_node
-        ) #[batch_size * n_node * n_node]
-        gbf_feature = self.gbf(dist, edge_type)
-        edge_features = gbf_feature.masked_fill(
-            padding_mask.unsqueeze(1).unsqueeze(-1), 0.0
-        ) # [batch_size * n_node * n_node * 128]
-        
-        graph_node_feature = (
-            # self.tag_encoder(tags) # do we need tag_encoder?
-            + self.atom_encoder(atoms)
-            + self.edge_proj(edge_features.sum(dim=-2))
-        )
-        # [batch_size * n_node * 768]
+            dist: Tensor = delta_pos.norm(dim=-1)
+            # 节点之间的相对距离（正则化）
+            delta_pos = delta_pos / (dist.unsqueeze(-1) + 1e-5)
+            edge_type = atoms.view(n_graph, n_node, 1) * self.atom_types + atoms.view(
+                n_graph, 1, n_node
+            ) #[batch_size * n_node * n_node]
+            gbf_feature = self.gbf(dist, edge_type)
+            edge_features = gbf_feature.masked_fill(
+                padding_mask.unsqueeze(1).unsqueeze(-1), 0.0
+            ) # [batch_size * n_node * n_node * 128]
+            
+            graph_node_feature = (
+                # self.tag_encoder(tags) # do we need tag_encoder?
+                self.atom_encoder(atoms)
+                + self.edge_proj(edge_features.sum(dim=-2))
+            )
+            # [batch_size * n_node * 768]
 
-        # ===== MAIN MODEL =====
-        output = F.dropout(
-            graph_node_feature, p=self.input_dropout, training=self.training
-        )
-        # output说明是直接从Node特征来的
-        output = output.transpose(0, 1).contiguous()
+            # ===== MAIN MODEL =====
+            output = F.dropout(
+                graph_node_feature, p=self.input_dropout, training=self.training
+            )
+            # output说明是直接从Node特征来的
+            output = output.transpose(0, 1).contiguous()
 
-        graph_attn_bias = self.bias_proj(gbf_feature).permute(0, 3, 1, 2).contiguous()
-        graph_attn_bias.masked_fill_(
-            padding_mask.unsqueeze(1).unsqueeze(2), float("-inf")
-        )
+            graph_attn_bias = self.bias_proj(gbf_feature).permute(0, 3, 1, 2).contiguous()
+            graph_attn_bias.masked_fill_(
+                padding_mask.unsqueeze(1).unsqueeze(2), float("-inf")
+            )
 
-        graph_attn_bias = graph_attn_bias.view(-1, n_node, n_node)
-        for _ in range(self.args.blocks):
-            for enc_layer in self.layers:
-                output = enc_layer(output, attn_bias=graph_attn_bias)
+            graph_attn_bias = graph_attn_bias.view(-1, n_node, n_node)
+            for _ in range(self.args.blocks):
+                for enc_layer in self.layers:
+                    output = enc_layer(output, attn_bias=graph_attn_bias)
 
-        output = self.final_ln(output)
-        output = output.transpose(0, 1)
-        # [batch_size, n_node, 768]
-        eng_output = F.dropout(output, p=0.1, training=self.training)
-        eng_output = (
-            self.engergy_proj(eng_output)
-        ).flatten(-2)
-        # [batch_size, n_node]
-        output_mask = real_mask  # no need to consider padding, since padding has tag 0, real_mask False
+            output = self.final_ln(output)
+            output = output.transpose(0, 1)
+            # [batch_size, n_node, 768]
+            eng_output = F.dropout(output, p=0.1, training=self.training)
+            nan_mask = torch.isnan(eng_output).any()
+            eng_output = (
+                self.engergy_proj(eng_output)
+            ).flatten(-2)
+            # [batch_size, n_node]
+            output_mask = real_mask  # no need to consider padding, since padding has tag 0, real_mask False
 
-        eng_output *= output_mask
-        eng_output = eng_output.sum(dim=-1)
-        # [batch_size]
+            eng_output *= output_mask
+            eng_output = eng_output.sum(dim=-1)
+            # [batch_size]
 
-        # 这是一个MHA
-        # todo: 求导
-        node_output = self.node_proc(output, graph_attn_bias, delta_pos)
-        # [batch_size, n_node, 3]
-        node_target_mask = output_mask.unsqueeze(-1)
+            # 这是一个MHA
+            # node_output = self.node_proc(output, graph_attn_bias, delta_pos)
+            grad_outputs = torch.ones_like(eng_output)
+            
+            # import pudb; pudb.set_trace()
+            node_output = -torch.autograd.grad(eng_output, 
+                                            pos, 
+                                            create_graph=True, 
+                                            retain_graph=True, 
+                                            grad_outputs=grad_outputs)[0] 
+            
+            # [batch_size, n_node, 3]
+            node_target_mask = output_mask.unsqueeze(-1)
         
         return eng_output, node_output, node_target_mask
 

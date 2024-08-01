@@ -14,12 +14,13 @@ CUDA_VISIBLE_DEVICES=0,1 fairseq-train --user-dir ../../graphormer  \
    --task graph_prediction --criterion l1_loss --num-classes 1 --arch graphormer3d_base \
    --optimizer adam --adam-betas '(0.9, 0.98)' --adam-eps 1e-6 --clip-norm 5.0 \
    --batch-size 64 \
-   --lr-scheduler polynomial_decay --lr 3e-4 --warmup-updates 24000 --total-num-update 400000 \
+   --lr-scheduler polynomial_decay --lr 3e-4 --warmup-updates 3000 --total-num-update 50000 \
    --dropout 0.0 --attention-dropout 0.0 --weight-decay 0.001 --update-freq 1 --seed 1 \
-   --fp16 --fp16-init-scale 4 --fp16-scale-window 256 --tensorboard-logdir ./tsbs \
+   --tensorboard-logdir /root/tf-logs/ \
    --embed-dim 768 --ffn-embed-dim 1 --attention-heads 48 \
-   --max-update 400000 --log-interval 100 --log-format simple \
-   --save-interval-updates 5000 --validate-interval-updates 2500 --keep-interval-updates 30 --no-epoch-checkpoints  \
-   --save-dir ./ckpt --layers 12 --blocks 4 --required-batch-size-multiple 1  --node-loss-weight 15
+   --max-update 50000 --log-interval 1000 --log-format simple \
+   --save-interval-updates 1000 --validate-interval-updates 1000 --keep-interval-updates 3   \
+   --save-dir /root/autodl-tmp/energy_16 --layers 12 --blocks 4 --required-batch-size-multiple 1  --node-loss-weight 15 \
+#   --fp16 --fp16-init-scale 4 --fp16-scale-window 256
    
  

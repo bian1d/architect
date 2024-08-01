@@ -32,18 +32,25 @@ class GraphPredictionL1Loss(FairseqCriterion):
         ## mogai by zeh ##
         atoms = sample["net_input"]["atoms"].squeeze()
         poses = sample["net_input"]["pos"]
+
+        poses.requires_grad = True
+
         tags = sample["net_input"]["tags"]
         real_mask = sample["net_input"]["real_mask"] 
+
         logits = model(atoms=atoms, tags=tags, pos=poses, real_mask=real_mask)
         energy, force, bsz = logits
         # [bsz], [bsz, natoms, 3]
         true_energy, true_force = sample["targets"]["energy"], sample["targets"]["forces"]
         true_energy = true_energy[:, 0]
+        force = force[real_mask].reshape(sample_size, -1, 3)
+        true_force = true_force[real_mask].reshape(sample_size, -1, 3)
         # [bsz], [bsz, natoms, 3]
         energy_loss = nn.L1Loss(reduction="mean")(energy, true_energy)
         force_loss = nn.L1Loss(reduction="mean")(force, true_force)
 
         loss = energy_loss
+        # loss = force_loss
 
         logging_output = {
             "loss": loss.data,
@@ -51,6 +58,7 @@ class GraphPredictionL1Loss(FairseqCriterion):
             "nsentences": sample_size,
             "ntokens": natoms,
         }
+        import pdb; pdb.set_trace()
         return loss, sample_size, logging_output
 
     @staticmethod
