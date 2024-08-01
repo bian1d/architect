@@ -6,31 +6,35 @@ from torch_geometric.data import Data, InMemoryDataset, Dataset, DataLoader
 from graphormer.data.wrapper import preprocess_item
 import copy
 import itertools
+from joblib import Parallel, delayed
+import time
 ### Physical world data generater ###
 def generate_electrons_iter_1(n_electrons):
-    positions = np.random.uniform(-5, 5, (n_electrons, 3)) # 均匀分布
+    positions = np.random.uniform(-1, 1, (n_electrons, 3)) # 均匀分布
     charges = np.random.randint(1, 10, size=(n_electrons))  # 每个原子带电1-10
     return positions, charges
 
 def calculate_forces_and_potential_iter_1(positions, charges):
     k_e = 1  # 库伦常数，用了原子单位制
     n_electrons, _ = positions.shape
-    forces = np.zeros_like(positions)
-    potential_energy = np.float32(0.0)
+    
+    # 计算位置差
+    r_vec = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]
+    r_mag = np.linalg.norm(r_vec, axis=-1)
+    r_mag[r_mag == 0] = np.inf
+    # 单位向量
+    r_hat = r_vec / r_mag[..., np.newaxis]
+    
+    # 计算力的大小
+    force_magnitude = k_e * charges[:, np.newaxis] * charges[np.newaxis, :] / r_mag ** 2
+    
+    # 计算力
+    forces = np.sum(force_magnitude[..., np.newaxis] * r_hat, axis=1)
+    
+    # 计算势能
+    potential_energy = np.sum(k_e * charges[:, np.newaxis] * charges[np.newaxis, :] / r_mag) / 2  
 
-    for i in range(n_electrons):
-        for j in range(i + 1, n_electrons):
-            r_vec = positions[j] - positions[i]
-            r_mag = np.linalg.norm(r_vec)
-            if r_mag == 0:
-                continue  # 避免两个随机出来的坐标恰好完全相同
-            r_hat = r_vec / r_mag # 从i指向j的向量
-
-            force_magnitude = k_e * charges[i] * charges[j] / r_mag ** 2
-            forces[i] -= force_magnitude * r_hat # 库伦排斥力 所以是反方向
-            forces[j] += force_magnitude * r_hat # 
-            potential_energy += k_e * charges[i] * charges[j] / r_mag
-
+    
     return forces, potential_energy
 
 class RandomElecDataset(InMemoryDataset):
@@ -94,7 +98,7 @@ class RandomElecDataset(InMemoryDataset):
 
     def generate_dataset(self):
         data_list = []
-        for _ in range(self.batch_size):
+        for i in range(self.batch_size):
             positions, charges = generate_electrons_iter_1(self.n_electrons)
             forces, potential_energy = calculate_forces_and_potential_iter_1(positions, charges)
             # Convert data to Tensor
@@ -118,15 +122,51 @@ class RandomElecDataset(InMemoryDataset):
 
         return data_list
 
+
+    def generate_single_data(self):
+        positions, charges = generate_electrons_iter_1(self.n_electrons)
+        forces, potential_energy = calculate_forces_and_potential_iter_1(positions, charges)
+        # Convert data to Tensor
+        charges_tensor = torch.tensor(charges, dtype=torch.long).unsqueeze(-1)
+        positions_tensor = torch.tensor(positions, dtype=torch.float)
+
+        energy_tensor = torch.tensor([potential_energy], dtype=torch.float)
+        edge_index = list(itertools.permutations(range(self.n_electrons), 2))
+        edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous()
+        edge_attr = torch.ones(edge_index.size(1), 1, dtype=torch.long)
+        data = Data(x=charges_tensor,
+                    charges=charges_tensor,
+                    edge_index=edge_index, 
+                    edge_attr=edge_attr, 
+                    y=energy_tensor, 
+                    pos=positions_tensor, 
+                    tags=torch.ones_like(charges_tensor).squeeze(), 
+                    real_mask=torch.ones_like(charges_tensor, dtype=torch.bool).squeeze(),
+                    forces=torch.tensor(forces, dtype=torch.float))
+
+        return data
+
+    def generate_dataset_parallel(self, n_jobs=-1):
+        data_list = Parallel(n_jobs=n_jobs)(
+            delayed(self.generate_single_data)(self.n_electrons) for _ in range(self.batch_size)
+        )
+        return data_list
+
     def process(self):
-        print("processing the data")
+        print("Start processing data...")
+        # 记录生成数据的开始时间
+        start_time = time.time()
+        # 生成数据
         data_list = self.generate_dataset()
+        # 记录生成数据的结束时间并打印耗时
+        generate_time = time.time()
+        print(f"Data generation took {generate_time - start_time:.2f} seconds")
         self.data_list = data_list
         data, slices = self.collate(data_list) # 64*90 = 5760 = edge_attr个数
         torch.save((data, slices), self.processed_paths[0])
         self.data, self.slices = data, slices
         self.num_data = len(data_list)
-        print("finish processing")
+        print("Finish processing")
 
     def len(self):
         return self.num_data
@@ -170,8 +210,8 @@ class RandomElecDataset(InMemoryDataset):
 
 @register_dataset("streaming_elec_dataset")
 def create_customized_dataset():
-    n_electrons = 16  # 假设为10个电子
-    batch_size = 40960 # 你得骗
+    n_electrons = 16  # 假设为16个电子
+    batch_size = 1600 # 你得骗
     
     dataset = RandomElecDataset(
         root='/tmp/RandomElecDataset',
