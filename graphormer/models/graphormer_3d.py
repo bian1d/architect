@@ -365,11 +365,18 @@ class Graphormer3D(BaseFairseqModel):
         padding_mask = atoms.eq(0)
 
             n_graph, n_node = atoms.size()
-            delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
 
-            dist: Tensor = delta_pos.norm(dim=-1)
+            delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
+            squared_delta_pos = delta_pos.square()
+            squared_dist = squared_delta_pos.sum(-1)
+            squared_dist = squared_dist + 1e-4
+            dist = squared_dist.sqrt()
+            # import pdb; pdb.set_trace()
+            # dist: Tensor = torch.norm(pos[:, :, None, :] - pos[:, None, :, :], dim=-1)
+            
+            # dist: Tensor = torch.ones_like(distv2)
             # 节点之间的相对距离（正则化）
-            delta_pos = delta_pos / (dist.unsqueeze(-1) + 1e-5)
+            # delta_pos = delta_pos / (dist.unsqueeze(-1) + 1e-5) # not used
             edge_type = atoms.view(n_graph, n_node, 1) * self.atom_types + atoms.view(
                 n_graph, 1, n_node
             ) #[batch_size * n_node * n_node]
@@ -427,7 +434,7 @@ class Graphormer3D(BaseFairseqModel):
                                             create_graph=True, 
                                             retain_graph=True, 
                                             grad_outputs=grad_outputs)[0] 
-            
+            # import pdb; pdb.set_trace()
             # [batch_size, n_node, 3]
             node_target_mask = output_mask.unsqueeze(-1)
         
@@ -437,7 +444,7 @@ class Graphormer3D(BaseFairseqModel):
 @register_model_architecture("graphormer3d", "graphormer3d_base")
 def base_architecture(args):
     args.blocks = getattr(args, "blocks", 4)
-    args.layers = getattr(args, "layers", 12)
+    args.layers = getattr(args, "layers", 12) # 12
     args.embed_dim = getattr(args, "embed_dim", 768)
     args.ffn_embed_dim = getattr(args, "ffn_embed_dim", 768)
     args.attention_heads = getattr(args, "attention_heads", 48)
@@ -448,4 +455,4 @@ def base_architecture(args):
     args.node_loss_weight = getattr(args, "node_loss_weight", 15)
     args.min_node_loss_weight = getattr(args, "min_node_loss_weight", 1)
     args.eng_loss_weight = getattr(args, "eng_loss_weight", 1)
-    args.num_kernel = getattr(args, "num_kernel", 128)
+    args.num_kernel = getattr(args, "num_kernel", 128) # 128
