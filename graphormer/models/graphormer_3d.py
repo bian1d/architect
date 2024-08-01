@@ -369,7 +369,7 @@ class Graphormer3D(BaseFairseqModel):
             delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
             squared_delta_pos = delta_pos.square()
             squared_dist = squared_delta_pos.sum(-1)
-            squared_dist = squared_dist + 1e-2
+            squared_dist = squared_dist + 1e-4
             dist = squared_dist.sqrt()
             # import pdb; pdb.set_trace()
             # dist: Tensor = torch.norm(pos[:, :, None, :] - pos[:, None, :, :], dim=-1)
