@@ -362,8 +362,8 @@ class Graphormer3D(BaseFairseqModel):
         # pos: [64, 10(16), 3]
         # eng_output: [64] 
         # -> node_output [64, 10(16), 3]
-        padding_mask = atoms.eq(0)
-
+        with torch.enable_grad():
+            padding_mask = atoms.eq(0)
             n_graph, n_node = atoms.size()
 
             delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
