@@ -35,30 +35,25 @@ def generate_online(n_electrons, batch_size):
 
 def calculate_forces_and_potential_iter_1(positions, charges):
     k_e = 1  # 库伦常数，用了原子单位制
-    forces = np.zeros_like(positions)
-    potential_energy = np.float32(0.0)
-
+    n_electrons, _ = positions.shape
+    
     # 计算位置差
     r_vec = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]
     r_mag = np.linalg.norm(r_vec, axis=-1)
-
-    # 避免除以零
     r_mag[r_mag == 0] = np.inf
-
     # 单位向量
     r_hat = r_vec / r_mag[..., np.newaxis]
-
+    
     # 计算力的大小
-    force_magnitude = k_e * charges[:, np.newaxis] * charges[np.newaxis, :] / r_mag**2
-
+    force_magnitude = k_e * charges[:, np.newaxis] * charges[np.newaxis, :] / r_mag ** 2
+    
     # 计算力
     forces = np.sum(force_magnitude[..., np.newaxis] * r_hat, axis=1)
-
+    
     # 计算势能
-    potential_energy = (
-        np.sum(k_e * charges[:, np.newaxis] * charges[np.newaxis, :] / r_mag) / 2
-    ) 
+    potential_energy = np.sum(k_e * charges[:, np.newaxis] * charges[np.newaxis, :] / r_mag) / 2  
 
+    
     return forces, potential_energy
 
 

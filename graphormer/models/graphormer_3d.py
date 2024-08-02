@@ -359,11 +359,11 @@ class Graphormer3D(BaseFairseqModel):
         return super().set_num_updates(num_updates)
 
     def forward(self, atoms: Tensor, tags: Tensor, pos: Tensor, real_mask: Tensor):
+        # pos: [64, 10(16), 3]
+        # eng_output: [64] 
+        # -> node_output [64, 10(16), 3]
         with torch.enable_grad():
             padding_mask = atoms.eq(0)
-
-            # bian1d added 确保pos的requires_grad为True
-
             n_graph, n_node = atoms.size()
 
             delta_pos = pos.unsqueeze(1) - pos.unsqueeze(2)
