@@ -18,8 +18,8 @@ CUDA_VISIBLE_DEVICES=0,1 fairseq-train --user-dir ../../graphormer  \
    --dropout 0.0 --attention-dropout 0.0 --weight-decay 0.001 --update-freq 1 --seed 1 \
    --tensorboard-logdir /root/tf-logs/ \
    --embed-dim 768 --ffn-embed-dim 1 --attention-heads 48 \
-   --max-update 50000 --log-interval 1000 --log-format simple \
-   --save-interval-updates 3000 --validate-interval-updates 3000 --keep-interval-updates 3   \
+   --max-update 50000 --log-interval 10000 --log-format simple \
+   --save-interval-updates 10000 --validate-interval-updates 10000 --keep-interval-updates 2   \
    --save-dir /root/autodl-tmp/force_32 --layers 12 --blocks 4 --required-batch-size-multiple 1  --node-loss-weight 15 \
 #   --fp16 --fp16-init-scale 4 --fp16-scale-window 256
    

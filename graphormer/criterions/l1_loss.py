@@ -120,7 +120,7 @@ class GraphPredictionL1Loss(FairseqCriterion):
         
 
         energy_loss = nn.L1Loss(reduction="sum")(energy, true_energy)
-        force_loss = nn.L1Loss(reduction="mean")(force, true_force) * 64
+        force_loss = nn.L1Loss(reduction="mean")(force, true_force) * sample_size
 
         # loss = energy_loss
         loss = force_loss
